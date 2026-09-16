@@ -3,72 +3,207 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>データ一覧 - Grid.js連携</title>
-  
-  <!-- Grid.js のCSS (スタイリング) -->
-  <link href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" rel="stylesheet" />
-  
+  <title>オリジナル番組表</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 40px;
-      background-color: #f9f9f9;
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
-    h1 {
+    body {
+      font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', sans-serif;
+      background-color: #eef0f4;
       color: #333;
     }
-    #wrapper {
-      margin-top: 20px;
-      background: #fff;
+    .header {
       padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      background-color: #fff;
+      border-bottom: 1px solid #ddd;
     }
+
+    /* 番組表のメイン構造 */
+    .timetable-container {
+      display: flex;
+      overflow-x: auto;
+      margin: 20px;
+      background: #fff;
+      border: 1px solid #ccc;
+    }
+
+    /* 左側の時間軸 */
+    .time-sidebar {
+      width: 50px;
+      flex-shrink: 0;
+      background: #5a6268;
+      color: #fff;
+      font-weight: bold;
+    }
+    .time-header {
+      height: 40px;
+      background: #495057;
+      border-bottom: 1px solid #6c757d;
+    }
+    .time-slot {
+      height: 120px; /* 1時間を120pxとして計算 (1分=2px) */
+      border-bottom: 1px solid #6c757d;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 5px;
+      font-size: 14px;
+    }
+
+    /* 右側のチャンネルと番組配置エリア */
+    .channels-container {
+      display: flex;
+      flex-grow: 1;
+    }
+    .channel-column {
+      width: 180px;
+      flex-shrink: 0;
+      border-right: 1px solid #e0e0e0;
+      position: relative;
+    }
+    .channel-header {
+      height: 40px;
+      line-height: 40px;
+      text-align: center;
+      font-weight: bold;
+      background: #f8f9fa;
+      border-bottom: 1px solid #ccc;
+      font-size: 13px;
+    }
+    .program-area {
+      position: relative;
+      /* 5時〜8時（3時間分 = 360px）の高さを用意 */
+      height: 360px; 
+      background: #fafafa;
+    }
+
+    /* 番組カードのブロック */
+    .program-card {
+      position: absolute;
+      width: calc(100% - 4px);
+      left: 2px;
+      padding: 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      overflow: hidden;
+      border: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+    .program-title {
+      font-weight: bold;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .program-desc {
+      color: #666;
+      line-height: 1.3;
+    }
+
+    /* チャンネルごとのテーマ色（必要に応じて追加） */
+    .bg-green  { background-color: #d4edda; }
+    .bg-purple { background-color: #e2d9f3; }
+    .bg-yellow { background-color: #fff3cd; }
   </style>
 </head>
 <body>
 
-  <h1>データ一覧</h1>
-  <!-- テーブルが描画されるコンテナ -->
-  <div id="wrapper"></div>
+  <div class="header">
+    <h1>番組表</h1>
+  </div>
 
-  <!-- Grid.js のJavaScriptライブラリ -->
-  <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
-  
+  <div class="timetable-container">
+    <!-- 時間軸 (5時〜7時) -->
+    <div class="time-sidebar">
+      <div class="time-header"></div>
+      <div class="time-slot">5時</div>
+      <div class="time-slot">6時</div>
+      <div class="time-slot">7時</div>
+    </div>
+
+    <!-- チャンネル列エリア -->
+    <div class="channels-container" id="channelsContainer">
+      <!-- JavaScriptでここにチャンネル毎の列と番組を動的挿入 -->
+    </div>
+  </div>
+
   <script>
-    // 1. Google Apps Script のWebアプリURLを設定
-    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyyTAarQNJNGTUOAdjIuXfWtdSBWRv2qGZ2_hfY7RAzd3ZiLWsbxhxTbMGMXpr11qba/exec"; // ★ここにURLを貼り付け
+    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyyTAarQNJNGTUOAdjIuXfWtdSBWRv2qGZ2_hfY7RAzd3ZiLWsbxhxTbMGMXpr11qba/exec"; // ★GASのURLに置き換え
 
-    // 2. データをフェッチして Grid.js でテーブル描画
+    // 表示開始時間（5時00分 = 300分）
+    const START_HOUR = 5;
+    const START_TOTAL_MINUTES = START_HOUR * 60;
+    
+    // 1分あたりの高さ(px) : 1時間=120pxなので 1分=2px
+    const PX_PER_MINUTE = 2;
+
     fetch(GAS_API_URL)
-      .then(response => response.json())
-      .then(resData => {
-        new gridjs.Grid({
-          columns: resData.columns, // スプレッドシート1行目のヘッダー
-          data: resData.data,       // 2行目以降のデータ
-          search: true,             // 検索ボックスを有効化
-          sort: true,               // 列の並べ替え（ソート）を有効化
-          pagination: {
-            limit: 10               // 1ページあたりの表示件数
-          },
-          language: {
-            'search': {
-              'placeholder': '検索キーワードを入力...'
-            },
-            'pagination': {
-              'previous': '前へ',
-              'next': '次へ',
-              'showing': '表示中:',
-              'results': () => '件'
-            }
-          }
-        }).render(document.getElementById("wrapper"));
-      })
-      .catch(error => {
-        console.error("データの読み込みに失敗しました:", error);
-        document.getElementById("wrapper").innerText = "データの読み込みに失敗しました。";
+      .then(res => res.json())
+      .then(data => {
+        renderTimetable(data);
       });
-  </script>
 
+    function renderTimetable(programs) {
+      // 1. ユニークなチャンネル一覧を取得
+      const channels = [...new Set(programs.map(p => p.channel))];
+      const container = document.getElementById("channelsContainer");
+
+      // 色付け用
+      const colors = ['bg-green', 'bg-purple', 'bg-yellow'];
+
+      channels.forEach((ch, index) => {
+        // チャンネルごとの列を作成
+        const col = document.createElement("div");
+        col.className = "channel-column";
+        
+        const header = document.createElement("div");
+        header.className = "channel-header";
+        header.innerText = ch;
+        col.appendChild(header);
+
+        const area = document.createElement("div");
+        area.className = "program-area";
+
+        // 対象チャンネルの番組だけをフィルタリングして配置
+        const chPrograms = programs.filter(p => p.channel === ch);
+        chPrograms.forEach(p => {
+          const card = createProgramCard(p, colors[index % colors.length]);
+          if (card) area.appendChild(card);
+        });
+
+        col.appendChild(area);
+        container.appendChild(col);
+      });
+    }
+
+    // 時間（HH:mm）を位置(top)と高さ(height)に変換してカードを生成
+    function createProgramCard(program, bgClass) {
+      const [sH, sM] = program.startTime.split(':').map(Number);
+      const [eH, eM] = program.endTime.split(':').map(Number);
+
+      const startMin = sH * 60 + sM;
+      const endMin = eH * 60 + eM;
+
+      // 画面表示上のY座標(top)と高さ(height)を計算
+      const topPx = (startMin - START_TOTAL_MINUTES) * PX_PER_MINUTE;
+      const heightPx = (endMin - startMin) * PX_PER_MINUTE;
+
+      if (topPx < 0) return null; // 範囲外の番組はスキップ
+
+      const card = document.createElement("div");
+      card.className = `program-card ${bgClass}`;
+      card.style.top = `${topPx}px`;
+      card.style.height = `${heightPx - 2}px`; // マージン分微調整
+
+      card.innerHTML = `
+        <div class="program-title">${program.startTime} ${program.title}</div>
+        <div class="program-desc">${program.description || ''}</div>
+      `;
+
+      return card;
+    }
+  </script>
 </body>
 </html>
