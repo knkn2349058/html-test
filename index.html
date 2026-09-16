@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>データ一覧 - Grid.js連携</title>
+  
+  <!-- Grid.js のCSS (スタイリング) -->
+  <link href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" rel="stylesheet" />
+  
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 40px;
+      background-color: #f9f9f9;
+    }
+    h1 {
+      color: #333;
+    }
+    #wrapper {
+      margin-top: 20px;
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+
+  <h1>データ一覧</h1>
+  <!-- テーブルが描画されるコンテナ -->
+  <div id="wrapper"></div>
+
+  <!-- Grid.js のJavaScriptライブラリ -->
+  <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
+  
+  <script>
+    // 1. Google Apps Script のWebアプリURLを設定
+    const GAS_API_URL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec"; // ★ここにURLを貼り付け
+
+    // 2. データをフェッチして Grid.js でテーブル描画
+    fetch(GAS_API_URL)
+      .then(response => response.json())
+      .then(resData => {
+        new gridjs.Grid({
+          columns: resData.columns, // スプレッドシート1行目のヘッダー
+          data: resData.data,       // 2行目以降のデータ
+          search: true,             // 検索ボックスを有効化
+          sort: true,               // 列の並べ替え（ソート）を有効化
+          pagination: {
+            limit: 10               // 1ページあたりの表示件数
+          },
+          language: {
+            'search': {
+              'placeholder': '検索キーワードを入力...'
+            },
+            'pagination': {
+              'previous': '前へ',
+              'next': '次へ',
+              'showing': '表示中:',
+              'results': () => '件'
+            }
+          }
+        }).render(document.getElementById("wrapper"));
+      })
+      .catch(error => {
+        console.error("データの読み込みに失敗しました:", error);
+        document.getElementById("wrapper").innerText = "データの読み込みに失敗しました。";
+      });
+  </script>
+
+</body>
+</html>
